@@ -116,10 +116,27 @@ async function redeemMobileConnectSession(value: string): Promise<MobileSession>
   return session;
 }
 
-/** The account service for email sign-in. A development build can name a local one. */
+let customMobileAccountApiUrl: string | null = null;
+
+export function setMobileAccountApiUrl(value: string | null): string | null {
+  if (!value?.trim()) {
+    customMobileAccountApiUrl = null;
+    return null;
+  }
+  const normalized = normalizeAccountApiUrl(value);
+  if (normalized) customMobileAccountApiUrl = normalized;
+  return normalized;
+}
+
+export function getMobileAccountApiUrl(): string {
+  return mobileAccountApiUrl();
+}
+
+/** The account service for email sign-in. A self-hosted or development build can name a custom one. */
 function mobileAccountApiUrl(): string {
+  if (customMobileAccountApiUrl) return customMobileAccountApiUrl;
   const override = process.env.EXPO_PUBLIC_OPENBOT_API_URL;
-  return (override && __DEV__ && normalizeAccountApiUrl(override)) || OPENBOT_CONTROL_PLANE_ORIGIN;
+  return (override && normalizeAccountApiUrl(override)) || OPENBOT_CONTROL_PLANE_ORIGIN;
 }
 
 export interface MobileEmailChallenge {

@@ -1,5 +1,10 @@
 import { AppLogo } from "@openbot/brand";
-import { createWebAppInvitePath, OPENBOT_INVITE_ORIGIN, toOpenBotInviteUrl } from "@openbot/contracts/invite-links";
+import {
+  createWebAppInvitePath,
+  OPENBOT_INVITE_ORIGIN,
+  selfHostedApiOrigin,
+  toOpenBotInviteUrl,
+} from "@openbot/contracts/invite-links";
 import { createSignal, For, onSettled, Show } from "solid-js";
 import { landingAnalytics } from "../../lib/analytics";
 import { detectDownloadPlatform } from "../../lib/download-platforms";
@@ -26,9 +31,10 @@ export function JoinPage(props: { lang: string; text: JoinPageText }) {
     let validInvite = true;
     try {
       const pageUrl = new URL(window.location.href);
+      const options = { selfHostedApiOrigin: selfHostedApiOrigin(pageUrl.origin) };
       const canonicalUrl = new URL(`${pageUrl.pathname}${pageUrl.search}`, OPENBOT_INVITE_ORIGIN);
-      setOpenUrl(toOpenBotInviteUrl(canonicalUrl.toString()));
-      setBrowserUrl(createWebAppInvitePath(canonicalUrl.toString()));
+      setOpenUrl(toOpenBotInviteUrl(canonicalUrl.toString(), options));
+      setBrowserUrl(createWebAppInvitePath(canonicalUrl.toString(), options));
     } catch {
       validInvite = false;
       setInvalid(true);

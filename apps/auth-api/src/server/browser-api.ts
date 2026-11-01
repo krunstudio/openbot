@@ -27,8 +27,10 @@ import { sendTeamInviteEmail } from "./team-invite-email";
 import type { AuthUser, TeamInviteEmailDelivery } from "./types";
 
 const COOKIE = "__Host-openbot-web";
+const HTTP_COOKIE = "openbot-web";
 const PREFIX = "/api/browser/";
 const COOKIE_ATTRIBUTES = "Path=/; Secure; HttpOnly; SameSite=Lax";
+const HTTP_COOKIE_ATTRIBUTES = "Path=/; HttpOnly; SameSite=Lax";
 
 export interface BrowserApiServices {
   auth: Pick<
@@ -114,15 +116,44 @@ function refuseWith(refusal: abstract new (...args: never) => { status: number; 
     );
 }
 
+function isHttpsRequest(request: Request): boolean {
+  const forwardedProto = request.headers.get("X-Forwarded-Proto")?.split(",", 1)[0]?.trim().toLowerCase();
+  if (forwardedProto === "https" || forwardedProto === "http") return forwardedProto === "https";
+  return new URL(request.url).protocol === "https:";
+}
+
+function formatSessionCookie(request: Request, token: string, maxAge: number): string {
+  return isHttpsRequest(request)
+    ? `${COOKIE}=${token}; ${COOKIE_ATTRIBUTES}; Max-Age=${maxAge}`
+    : `${HTTP_COOKIE}=${token}; ${HTTP_COOKIE_ATTRIBUTES}; Max-Age=${maxAge}`;
+}
+
 function browserSessionToken(request: Request): string | null {
-  const values = (request.headers.get("Cookie") ?? "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter((part) => part.startsWith(`${COOKIE}=`));
-  const [value] = values;
-  if (values.length !== 1 || value === undefined) return null;
-  const token = value.slice(COOKIE.length + 1);
-  return /^[A-Za-z0-9_-]{20,512}$/u.test(token) ? token : null;
+  const parts = (request.headers.get("Cookie") ?? "").split(";").map((part) => part.trim());
+  for (const cookieName of [COOKIE, HTTP_COOKIE]) {
+    const values = parts.filter((part) => part.startsWith(`${cookieName}=`));
+    const [value] = values;
+    if (values.length === 1 && value !== undefined) {
+      const token = value.slice(cookieName.length + 1);
+      if (/^[A-Za-z0-9_-]{20,512}$/u.test(token)) return token;
+    }
+  }
+  return null;
+}
+
+function sameBrowserOrigin(request: Request): boolean {
+  const originHeader = request.headers.get("Origin");
+  if (!originHeader) return false;
+  const requestUrl = new URL(request.url);
+  if (originHeader === requestUrl.origin) return true;
+  try {
+    const parsedOrigin = new URL(originHeader);
+    const forwardedHost =
+      request.headers.get("X-Forwarded-Host")?.split(",", 1)[0]?.trim() ?? request.headers.get("Host")?.trim();
+    return parsedOrigin.host === (forwardedHost || requestUrl.host);
+  } catch {
+    return false;
+  }
 }
 
 const METHODS: ReadonlySet<string> = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
@@ -152,7 +183,7 @@ export function handleBrowserApi(request: Request, services: BrowserApiServices)
     return Promise.resolve(failure(405, "method_not_allowed", "This method is not supported."));
   if (
     request.method !== "GET" &&
-    (request.headers.get("Origin") !== new URL(request.url).origin ||
+    (!sameBrowserOrigin(request) ||
       request.headers.get("X-OpenBot-Browser") !== "1" ||
       !browserWriteContentTypeAllowed(request, path))
   )
@@ -192,7 +223,7 @@ const handleBrowserOperation = Effect.fn("BrowserApi.handleOperation")(function*
       if (user) yield* services.remote.endAccountSession(user.id, yield* sha256(previous));
     }
     const response = json({ user: result.user });
-    response.headers.set("Set-Cookie", `${COOKIE}=${result.sessionToken}; ${COOKIE_ATTRIBUTES}; Max-Age=34560000`);
+    response.headers.set("Set-Cookie", formatSessionCookie(request, result.sessionToken, 34560000));
     return response;
   }
   if (path === "checkout-attribution" && request.method === "POST") {
@@ -212,7 +243,7 @@ const handleBrowserOperation = Effect.fn("BrowserApi.handleOperation")(function*
   if (path === "logout" && request.method === "POST") {
     if (token && user) yield* services.remote.endAccountSession(user.id, yield* sha256(token));
     const response = json({ signedOut: true });
-    response.headers.set("Set-Cookie", `${COOKIE}=; ${COOKIE_ATTRIBUTES}; Max-Age=0`);
+    response.headers.set("Set-Cookie", formatSessionCookie(request, "", 0));
     return response;
   }
   if (!token || !user) return failure(401, "sign_in_required", "Sign in is required.");

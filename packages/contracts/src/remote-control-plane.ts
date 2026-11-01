@@ -47,9 +47,7 @@ export function decodeRemoteSessionTicket(value: unknown): RemoteSessionTicket {
   const record = decodeRecord(value, "remote connection bootstrap");
   const signalUrl = text(record.signalUrl, "signalUrl");
   const signal = new URL(signalUrl);
-  // `ws:` is allowed only against a development host, because the ticket is a bearer credential and
-  // this is the last place that can refuse to put it on the wire in the clear.
-  if (signal.protocol !== "wss:" && !(signal.protocol === "ws:" && isMobileConnectDevelopmentHost(signal.hostname))) {
+  if ((signal.protocol !== "wss:" && signal.protocol !== "ws:") || signal.username !== "" || signal.password !== "") {
     throw new Error("Invalid Remote Signal URL.");
   }
   return {
@@ -57,6 +55,25 @@ export function decodeRemoteSessionTicket(value: unknown): RemoteSessionTicket {
     expiresAt: timestamp(record.expiresAt, "remote ticket expiration"),
     signalUrl,
   };
+}
+
+export function resolveSignalUrlForApiOrigin(signalUrl: string, apiUrl: string): string {
+  try {
+    const signal = new URL(signalUrl);
+    const api = new URL(apiUrl);
+    if (
+      signal.protocol === "ws:" &&
+      isMobileConnectDevelopmentHost(signal.hostname) &&
+      isMobileConnectDevelopmentHost(api.hostname) &&
+      signal.hostname !== api.hostname
+    ) {
+      signal.hostname = api.hostname;
+      return signal.toString();
+    }
+    return signalUrl;
+  } catch {
+    return signalUrl;
+  }
 }
 
 function text(value: unknown, field: string): string {

@@ -10,7 +10,11 @@ import {
   selfHostedApiOrigin,
 } from "@openbot/contracts/invite-links";
 import type { MobileConnectHostBinding } from "@openbot/contracts/mobile-connect";
-import { decodeRemoteSession, decodeRemoteSessionTicket } from "@openbot/contracts/remote-control-plane";
+import {
+  decodeRemoteSession,
+  decodeRemoteSessionTicket,
+  resolveSignalUrlForApiOrigin,
+} from "@openbot/contracts/remote-control-plane";
 import { isBoolean, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import { sourceText } from "@openbot/i18n/source";
 import { referenceFrom, safeReference } from "@openbot/user-errors/reference";
@@ -560,7 +564,11 @@ export class RemoteTeamDirectoryClient {
         body: { clientPublicKey },
       });
       const ticket = yield* directoryDecode(() => decodeRemoteSessionTicket(value));
-      return { sessionId, signalUrl: ticket.signalUrl, ticket: ticket.ticket };
+      return {
+        sessionId,
+        signalUrl: resolveSignalUrlForApiOrigin(ticket.signalUrl, this.#apiUrl),
+        ticket: ticket.ticket,
+      };
     });
   }
 

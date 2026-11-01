@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Utamakan Node v22+ (~/.local/bin / ~/.hermes/node/bin) dan Bun lokal di depan NVM Node v20
+for candidate in \
+  "$HOME/.config/OpenBot/provider-runtimes/bun/linux-x64/1.4.4/bin" \
+  "$HOME/.bun/bin" \
+  "$HOME/.hermes/node/bin" \
+  "$HOME/.local/bin"; do
+  if [ -d "$candidate" ]; then
+    export PATH="$candidate:$PATH"
+  fi
+done
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "Error: 'bun' tidak ditemukan. Instal Bun dengan: curl -fsSL https://bun.sh/install | bash" >&2
+  exit 1
+fi
+
+case "${1:-}" in
+  stop|status|forget)
+    cmd="$1"
+    shift
+    exec bun "$SCRIPT_DIR/scripts/dev-stack.ts" "$cmd" "$@"
+    ;;
+  *)
+    exec bun "$SCRIPT_DIR/scripts/selfhost.ts" "$@"
+    ;;
+esac

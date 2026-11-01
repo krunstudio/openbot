@@ -69,7 +69,9 @@ export function selfHostedApiOrigin(apiUrl: string | undefined): string | undefi
   if (!apiUrl) return undefined;
   try {
     const { protocol, origin } = new URL(apiUrl);
-    return protocol === "https:" && origin !== OPENBOT_INVITE_ORIGIN && !isValidRemoteApiUrl(`${origin}/`)
+    return (protocol === "https:" || protocol === "http:") &&
+      origin !== OPENBOT_INVITE_ORIGIN &&
+      !isValidRemoteApiUrl(`${origin}/`)
       ? origin
       : undefined;
   } catch {
@@ -145,14 +147,24 @@ export function parseInviteUrl(value: string, options: InviteLinkOptions = {}): 
   }
 
   const canonical =
-    url.protocol === "https:" && url.origin === OPENBOT_INVITE_ORIGIN && url.pathname === OPENBOT_INVITE_PATH;
+    url.protocol === "https:" &&
+    url.origin === OPENBOT_INVITE_ORIGIN &&
+    url.pathname === OPENBOT_INVITE_PATH &&
+    url.port === "";
+  const selfHostedJoin =
+    (url.protocol === "https:" || url.protocol === "http:") &&
+    options.selfHostedApiOrigin !== undefined &&
+    url.origin === options.selfHostedApiOrigin &&
+    url.pathname === OPENBOT_INVITE_PATH;
   const customScheme =
-    url.protocol === "openbot:" && url.hostname === "join" && (url.pathname === "" || url.pathname === "/");
+    url.protocol === "openbot:" &&
+    url.hostname === "join" &&
+    (url.pathname === "" || url.pathname === "/") &&
+    url.port === "";
   if (
-    (!canonical && !customScheme) ||
+    (!canonical && !selfHostedJoin && !customScheme) ||
     url.username !== "" ||
     url.password !== "" ||
-    url.port !== "" ||
     url.hash !== "" ||
     !hasOnlyInviteFields(url.searchParams)
   ) {
@@ -197,7 +209,7 @@ export function isValidRemoteApiUrl(value: string, options: InviteLinkOptions = 
 }
 
 function isSelfHostedApiUrl(url: URL, options: InviteLinkOptions): boolean {
-  return url.protocol === "https:" && url.origin === options.selfHostedApiOrigin;
+  return (url.protocol === "https:" || url.protocol === "http:") && url.origin === options.selfHostedApiOrigin;
 }
 
 function validatePayload(payload: InviteLinkPayload, options: InviteLinkOptions): void {

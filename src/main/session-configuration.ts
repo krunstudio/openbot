@@ -13,6 +13,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { extname, isAbsolute, relative, resolve } from "node:path";
 import { CHAT_VISUAL_PAGE_LIMIT, isChatVisualMimeType } from "@openbot/contracts/chat-visual";
+import { selfHostedApiOrigin } from "@openbot/contracts/invite-links";
 import { LOCAL_SERVER_ID } from "@openbot/contracts/ipc";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { app, session } from "electron";
@@ -33,6 +34,7 @@ export function configureContentSecurityPolicy(): void {
     app.isPackaged,
     process.env.REMOTE_SIGNAL_URL,
     readSelfHostedSignalOrigin(process.env.OPENBOT_AUTH_API_URL, process.env.OPENBOT_REMOTE_SIGNAL_URL),
+    selfHostedApiOrigin(process.env.OPENBOT_AUTH_API_URL),
   );
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

@@ -131,15 +131,14 @@ export const INPUT_LIMITS = {
   teamMembers: 100,
   activeInvites: 100,
   // Permanent links accept unlimited joins until revoked, so a leaked link is open
-  // enrollment. The cap stays small; single-use invitations keep the larger budget.
-  maxPermanentInvites: 5,
+  // enrollment. Self-hosted servers get a generous cap.
+  maxPermanentInvites: 50,
   sessionsPerMember: 10,
 } as const;
 
-// Active members of one host with no plan and no entitled license of its owner, owner included: the
-// owner and two others. A plan sets its own limit (`memberLimitForPlan`), and a license gives its users.
-// `INPUT_LIMITS.teamMembers` stays the wire cap for stored members.
-export const DEFAULT_TEAM_MEMBER_LIMIT = 3;
+// Active members of one host with no plan and no entitled license of its owner, owner included.
+// Self-hosted servers allow up to the wire cap (`INPUT_LIMITS.teamMembers`).
+export const DEFAULT_TEAM_MEMBER_LIMIT = INPUT_LIMITS.teamMembers;
 
 export const ATTACHMENT_LIMITS = {
   fileBytes: 100 * 1024 * 1024,

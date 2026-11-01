@@ -25,6 +25,7 @@ import {
   decodeRemoteSessionTicket,
   type RemoteSession,
   type RemoteSessionTicket,
+  resolveSignalUrlForApiOrigin,
 } from "@openbot/contracts/remote-control-plane";
 import { isBoolean, isDynamicRecord, isNumber, isString } from "@openbot/contracts/runtime-values";
 import {
@@ -671,7 +672,10 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
       return yield* this.#requestEffect(
         `/v2/remote/hosts/${encodeURIComponent(hostId)}/ticket`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-        decodeRemoteSessionTicket,
+        (value) => {
+          const decoded = decodeRemoteSessionTicket(value);
+          return { ...decoded, signalUrl: resolveSignalUrlForApiOrigin(decoded.signalUrl, this.#options.apiUrl) };
+        },
       );
     },
     (operation) => this.#owned(operation),
@@ -1026,7 +1030,10 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ clientPublicKey }),
         },
-        decodeRemoteSessionTicket,
+        (value) => {
+          const decoded = decodeRemoteSessionTicket(value);
+          return { ...decoded, signalUrl: resolveSignalUrlForApiOrigin(decoded.signalUrl, this.#options.apiUrl) };
+        },
       );
     },
     (operation) => this.#owned(operation),
@@ -2015,9 +2022,8 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
 
 export function readCentralAuthApiUrl(value: string | undefined, fallback = "http://127.0.0.1:3100"): string {
   const url = new URL(value ?? fallback);
-  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost";
-  if ((url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) || url.pathname !== "/") {
-    throw new Error("OPENBOT_AUTH_API_URL must be HTTPS or an HTTP loopback origin.");
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.pathname !== "/" || url.username || url.password) {
+    throw new Error("OPENBOT_AUTH_API_URL must be an HTTP or HTTPS origin.");
   }
   return url.origin;
 }

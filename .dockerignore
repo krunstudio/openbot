@@ -3,6 +3,10 @@
 **/.env
 **/.env.*
 !**/.env.example
+!apps/auth-api/.env.dev
+.openbot
+apps/auth-api/.wrangler
+out-dev-*
 coverage
 dist
 out

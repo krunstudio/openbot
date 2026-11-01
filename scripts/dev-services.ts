@@ -44,7 +44,7 @@ import { prepareDevelopmentEnvironment } from "./prepare-dev-environment";
 const logger = createOpenBotLogger("dev-services");
 
 export type DevelopmentService = "api" | "remote" | "app" | "test-client";
-type DevelopmentTarget = Exclude<DevelopmentService, "remote"> | "all";
+type DevelopmentTarget = Exclude<DevelopmentService, "remote"> | "web" | "all";
 type DevelopmentNetworkInterfaces = NodeJS.Dict<Array<Pick<NetworkInterfaceInfo, "address" | "family" | "internal">>>;
 
 export interface DevelopmentServiceSpec {
@@ -107,6 +107,7 @@ const DEFAULT_REMOTE_DEBUGGING_PORTS = {
 export function servicesForTarget(target: DevelopmentTarget): DevelopmentService[] {
   if (target === "all") return ["api", "remote", "app"];
   if (target === "test-client") return ["api", "remote", "app", "test-client"];
+  if (target === "web") return ["api", "remote"];
   if (target === "api") return ["api"];
   return ["api", "remote", "app"];
 }
@@ -143,10 +144,19 @@ export function createDevelopmentServiceSpec(
   const isTestClient = name === "test-client";
   const outputDirectory = isTestClient ? "out-dev-test-client" : "out-dev-app";
   const electronVite = resolvePackageBin(projectRoot, "electron-vite");
+  const extraElectronArgs = childEnvironment.OPENBOT_SERVER === "1" ? ["--", "--password-store=gnome-libsecret"] : [];
   return {
     name,
     executable: electronVite,
-    args: ["dev", "--watch", "--outDir", outputDirectory, "--entry", join(outputDirectory, "main", "index.js")],
+    args: [
+      "dev",
+      "--watch",
+      "--outDir",
+      outputDirectory,
+      "--entry",
+      join(outputDirectory, "main", "index.js"),
+      ...extraElectronArgs,
+    ],
     cwd: projectRoot,
     env: {
       ...childEnvironment,
@@ -222,7 +232,7 @@ function seedDevelopmentProfile(profile: string, environment: NodeJS.ProcessEnv)
   // appeared in between is kept rather than replaced. The seed runs with the app
   // child's own environment, so it reads the same instance id and writes the
   // profile that child opens.
-  execFileSync(process.execPath, ["run", "dev:seed", "--if-missing"], {
+  execFileSync(process.execPath, [join(projectRoot, "scripts", "seed-dev-state.ts"), "--if-missing"], {
     cwd: projectRoot,
     stdio: "inherit",
     env: withoutElectronRuntimeFlags(environment),
@@ -257,8 +267,8 @@ export interface DevelopmentInvocation {
 
 export function parseDevelopmentTarget(args: string[]): DevelopmentInvocation {
   const target = args.find((argument) => !argument.startsWith("--")) ?? "all";
-  if (target !== "api" && target !== "app" && target !== "test-client" && target !== "all") {
-    throw new Error(`Unknown development target: ${target}. Use api, app, test-client, or all.`);
+  if (target !== "api" && target !== "web" && target !== "app" && target !== "test-client" && target !== "all") {
+    throw new Error(`Unknown development target: ${target}. Use api, web, app, test-client, or all.`);
   }
   const unsupportedOption = args.find(
     (argument) => argument.startsWith("--") && !DEVELOPMENT_OPTIONS.some((option) => option === argument),
@@ -360,6 +370,18 @@ async function main(): Promise<void> {
   const closeSlackTunnels = slack ? await attachSlackTunnels(specs, projectRoot) : null;
 
   try {
+    if (
+      specs.some((spec) => spec.name === "api") &&
+      !existsSync(resolve(projectRoot, "apps/auth-api/.wrangler/state/v3/d1"))
+    ) {
+      logger.info("Applying local D1 SQLite migrations for Auth API...");
+      execFileSync(process.execPath, ["run", "api:migrate:local"], {
+        cwd: projectRoot,
+        stdio: "inherit",
+        env: { ...withoutElectronRuntimeFlags(process.env), CI: "1" },
+      });
+    }
+
     // After the lock, because seeding a profile takes long enough that a sibling
     // worktree should not wait behind it to choose its own ports.
     const seed = developmentProfileToSeed(specs);
@@ -468,6 +490,8 @@ async function allocateDevelopmentPorts(
       }
     }
     configureMobileConnectDevelopmentNetwork(services, sharedEnvironment, networkInterfaces());
+    const webOrigin = sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL ?? `http://127.0.0.1:${apiPort}`;
+    logger.info(`Self-Hosted WebUI (/app): ${webOrigin}/app (local: http://127.0.0.1:${apiPort}/app)`);
     if (sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL) {
       logger.info(`Mobile Connect API: ${sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL}`);
     }
@@ -642,11 +666,11 @@ export function configureMobileConnectDevelopmentNetwork(
   environment: NodeJS.ProcessEnv,
   interfaces: DevelopmentNetworkInterfaces,
 ): void {
-  const hasMobileClient = services.some((service) => service === "app" || service === "test-client");
   const apiPort = readPort(environment.OPENBOT_API_PORT);
   if (!apiPort) return;
-  const exposeToLan = hasMobileClient && environment.OPENBOT_API_HOST !== "127.0.0.1";
-  const address = exposeToLan ? selectMobileConnectLanAddress(interfaces) : null;
+  const exposeToLan = environment.OPENBOT_API_HOST !== "127.0.0.1";
+  const publicHost = environment.OPENBOT_PUBLIC_HOST?.trim();
+  const address = publicHost ? publicHost : exposeToLan ? selectMobileConnectLanAddress(interfaces) : null;
 
   if (services.includes("remote")) {
     const signalPort = readPort(environment.REMOTE_SIGNAL_PORT) ?? DEFAULT_REMOTE_SIGNAL_PORT;
@@ -655,7 +679,9 @@ export function configureMobileConnectDevelopmentNetwork(
     environment.REMOTE_TLS_DISABLED ??= "true";
     environment.REMOTE_CONTROL_PLANE_URL ??= `http://127.0.0.1:${apiPort}`;
     environment.REMOTE_AUTH_WEBHOOK_URL ??= `http://127.0.0.1:${signalPort}/internal/auth-events`;
+    environment.REMOTE_AUTH_WEBHOOK_URLS ??= "";
     environment.REMOTE_SIGNAL_URL ??= `ws://${address ?? "127.0.0.1"}:${signalPort}/v1/signal`;
+    environment.REMOTE_SIGNAL_HOMES ??= "";
     environment.TURN_HOST ??= address ?? "127.0.0.1";
   }
 
@@ -683,7 +709,7 @@ export function selectMobileConnectLanAddress(interfaces: DevelopmentNetworkInte
 
 function interfacePriority(name: string): 0 | 1 | 2 {
   if (name === "en0" || name === "eth0") return 0;
-  if (/^(?:en|eth|wl)/u.test(name)) return 1;
+  if (/^(?:en|eth|wl|tailscale)/u.test(name)) return 1;
   return 2;
 }
 
@@ -695,6 +721,7 @@ function isPrivateIpv4(address: string): boolean {
   const [first, second] = values;
   return (
     first === 10 ||
+    (first === 100 && second !== undefined && second >= 64 && second <= 127) ||
     (first === 172 && second !== undefined && second >= 16 && second <= 31) ||
     (first === 192 && second === 168)
   );
@@ -703,18 +730,18 @@ function isPrivateIpv4(address: string): boolean {
 async function waitForDevelopmentApi(portValue: string | undefined, child: ChildProcess): Promise<void> {
   const port = readPort(portValue);
   if (!port) throw new Error("The development API port is missing.");
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 90_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error("The development Auth API stopped before it became ready.");
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health/live`, {
-        signal: AbortSignal.timeout(1_000),
+        signal: AbortSignal.timeout(5_000),
       });
       if (response.ok) return;
     } catch {
       // The API can reject connections while Vite and the Worker runtime start.
     }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
   }
   throw new Error(`The development Auth API did not become ready on port ${port}.`);
 }
@@ -722,18 +749,18 @@ async function waitForDevelopmentApi(portValue: string | undefined, child: Child
 async function waitForDevelopmentRemote(portValue: string | undefined, child: ChildProcess): Promise<void> {
   const port = readPort(portValue);
   if (!port) throw new Error("The development Signal health port is missing.");
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error("The development Signal service stopped before it became ready.");
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health/ready`, {
-        signal: AbortSignal.timeout(1_000),
+        signal: AbortSignal.timeout(5_000),
       });
       if (response.ok) return;
     } catch {
       // The Signal service can reject connections while Bun starts its watcher.
     }
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
   }
   throw new Error(`The development Signal service did not become ready on port ${port}.`);
 }

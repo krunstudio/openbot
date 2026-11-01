@@ -1,6 +1,6 @@
 import { agentTemplateIdFromWebAppSearch, WEB_APP_AGENT_TEMPLATE_PARAM } from "@openbot/contracts/agent-template-links";
 import { type FirstTouch, readFirstTouch } from "@openbot/contracts/first-touch";
-import { inviteUrlFromWebAppSearch, WEB_APP_INVITE_FIELDS } from "@openbot/contracts/invite-links";
+import { inviteUrlFromWebAppSearch, selfHostedApiOrigin, WEB_APP_INVITE_FIELDS } from "@openbot/contracts/invite-links";
 import type { AppVariant, CentralAuthState, CentralAuthUser } from "@openbot/contracts/ipc";
 import {
   type MarketplaceListingLink,
@@ -86,7 +86,10 @@ function takeAgentTemplateLink(): string | null {
 function takeInviteLink(): string | null {
   const url = new URL(window.location.href);
   if (!WEB_APP_INVITE_FIELDS.some((field) => url.searchParams.has(field))) return null;
-  const inviteUrl = inviteUrlFromWebAppSearch(url.search, { allowLocalDevelopmentApiUrl: import.meta.env.DEV });
+  const inviteUrl = inviteUrlFromWebAppSearch(url.search, {
+    allowLocalDevelopmentApiUrl: import.meta.env.DEV,
+    selfHostedApiOrigin: selfHostedApiOrigin(url.origin),
+  });
   for (const field of WEB_APP_INVITE_FIELDS) url.searchParams.delete(field);
   window.history.replaceState(window.history.state, "", url);
   return inviteUrl;

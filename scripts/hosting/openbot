@@ -197,9 +197,17 @@ login_command() {
     control POST /v1/login/start "email=$email" ${name:+"name=$name"}
     check_answer || exit 1
     challenge=$(value challenge)
-    echo "OpenBot sent a sign-in code to $email."
+    dev_code=$(value code)
+    if [ -n "$dev_code" ]; then
+      echo "Self-hosted sign-in code for $email: $dev_code (press Enter to use it)"
+    else
+      echo "OpenBot sent a sign-in code to $email."
+    fi
     for attempt in 1 2 3; do
       read -rp "Code: " code
+      if [ -z "$code" ] && [ -n "$dev_code" ]; then
+        code=$dev_code
+      fi
       control POST /v1/login/verify "challenge=$challenge" "code=$code" ${name:+"name=$name"}
       if check_answer; then break; fi
       [ "$attempt" -lt 3 ] || exit 1
@@ -215,7 +223,7 @@ login_command() {
   done
   show_status
   if [ "$(value server)" = online ]; then
-    echo "Sign in to OpenBot with $email on your computer or https://openbot.run/app to use this server."
+    echo "Sign in to OpenBot with $email on your computer or ${OPENBOT_AUTH_API_URL:-http://127.0.0.1:3100}/app to use this server."
     echo "To use it from your phone, run: openbot mobile-connect"
   fi
 }

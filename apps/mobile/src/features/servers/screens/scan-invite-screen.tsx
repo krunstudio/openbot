@@ -1,4 +1,5 @@
 import { parseInviteUrl, selfHostedApiOrigin } from "@openbot/contracts/invite-links";
+import { parseMobileConnectUrl } from "@openbot/contracts/mobile-connect";
 import { router, Stack } from "expo-router";
 import { Typography } from "heroui-native";
 import { useThemeColor } from "heroui-native/hooks";
@@ -30,6 +31,9 @@ export function ScanInviteScreen({
       embedded
       pairing={false}
       onScan={async (data) => {
+        if (parseMobileConnectUrl(data)) {
+          throw new Error(t("mobile.link.pairing.alreadySignedIn"));
+        }
         try {
           parseInviteUrl(data, { selfHostedApiOrigin: selfHostedApiOrigin(session?.apiUrl) });
         } catch {

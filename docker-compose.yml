@@ -1,0 +1,60 @@
+# 100% Self-Hosted OpenBot Stack (WebUI /app + Control Plane API + Signal + Marketplace + Headless Host)
+#
+# Quick Start on your Server / VPS:
+#   1. Set OPENBOT_PUBLIC_HOST to your server's IP address, Tailscale IP, or domain:
+#        export OPENBOT_PUBLIC_HOST=192.168.18.4   # or your VPS public IP
+#   2. Build and start in background:
+#        docker compose up -d --build
+#   3. Open WebUI in browser:
+#        http://<OPENBOT_PUBLIC_HOST>:3100/app
+#   4. (Optional) Sign in the built-in Headless Server Host or generate Mobile Connect QR via CLI:
+#        docker compose exec openbot openbot login
+#        docker compose exec openbot openbot mobile-connect
+#        docker compose exec openbot openbot status
+#   5. (Optional) Sync with latest official OpenBot upstream at any time:
+#        docker compose exec openbot selfhost sync && docker compose restart openbot
+
+services:
+  openbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openbot-selfhost
+    restart: unless-stopped
+    # Required for Chromium/Electron user namespaces inside Docker
+    security_opt:
+      - seccomp=./docker/seccomp.json
+    # Chromium shared memory
+    shm_size: 1g
+    stop_grace_period: 60s
+    ports:
+      - "${OPENBOT_API_PORT:-3100}:3100"
+      - "${REMOTE_SIGNAL_PORT:-3101}:3101"
+    environment:
+      # "app" = Full Stack (WebUI + Control Plane + Signal + Headless OpenBot Host)
+      # "web" = Control Plane + WebUI + Signal only (without Headless Electron Host)
+      OPENBOT_MODE: ${OPENBOT_MODE:-app}
+      # IMPORTANT: Set this to your Server's LAN IP, Tailscale IP, or Public IP so
+      # WebUI, Mobile Connect QR codes, and WebRTC Signal point to your server IP:
+      OPENBOT_PUBLIC_HOST: ${OPENBOT_PUBLIC_HOST:-127.0.0.1}
+      OPENBOT_API_HOST: 0.0.0.0
+      OPENBOT_API_PORT: 3100
+      REMOTE_SIGNAL_PORT: 3101
+      # Set to "true" to automatically pull & rebase updates from official repo on container start
+      OPENBOT_AUTO_SYNC: ${OPENBOT_AUTO_SYNC:-false}
+      # Optional: Add AI Provider API keys for headless agents
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
+      # Optional SMTP settings (leave empty to display OTP login code directly on screen)
+      EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+      EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-}
+      EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:-}
+      EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    volumes:
+      - openbot-data:/data
+
+volumes:
+  openbot-data:

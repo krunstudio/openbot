@@ -75,6 +75,8 @@ export function createDevelopmentDefaults(): Record<string, string> {
     EMAIL_SMTP_PASSWORD: "",
     SKILLS_ADMIN_TOKEN: developmentSecret(),
     SITE_REPORT_HASH_SECRET: developmentSecret(),
+    REMOTE_SIGNAL_HOMES: "",
+    REMOTE_AUTH_WEBHOOK_URLS: "",
     REMOTE_AUTH_WEBHOOK_SECRET: developmentSecret(),
     REMOTE_TICKET_PRIVATE_JWK: tickets.privateJwk,
     REMOTE_TICKET_PUBLIC_JWKS: tickets.publicJwks,

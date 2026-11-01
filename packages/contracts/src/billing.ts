@@ -52,7 +52,7 @@ export const BILLING_PLANS: readonly BillingPlan[] = [
  * server keeps the limit that it had when the owner bought it.
  */
 export const LEGACY_MEMBER_LIMITS: Readonly<Record<BillingPlanId, number>> = {
-  starter: DEFAULT_TEAM_MEMBER_LIMIT,
+  starter: 3,
   standard: 10,
   pro: 25,
 };
@@ -83,9 +83,9 @@ export function memberLimitForPlan(plan: BillingPlanId | null): number {
   return BILLING_PLANS.find((candidate) => candidate.id === plan)?.memberLimit ?? DEFAULT_TEAM_MEMBER_LIMIT;
 }
 
-/** The active hosted-site limit of a server with this plan. A self-hosted server has no plan and gets 1. */
+/** The active hosted-site limit of a server with this plan. A self-hosted server has no plan and gets 50. */
 export function siteLimitForPlan(plan: BillingPlanId | null): number {
-  return BILLING_PLANS.find((candidate) => candidate.id === plan)?.siteLimit ?? 1;
+  return BILLING_PLANS.find((candidate) => candidate.id === plan)?.siteLimit ?? 50;
 }
 
 /**

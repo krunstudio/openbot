@@ -49,7 +49,7 @@
     ]
   },
   "vars": {
-    "AUTH_EXPOSE_DEVELOPMENT_CODE": "false",
+    "AUTH_EXPOSE_DEVELOPMENT_CODE": "",
     "EMAIL_SMTP_HOST": "mail.privateemail.com",
     "EMAIL_SMTP_PORT": "465",
     "EMAIL_SMTP_USERNAME": "hello@openbot.run",
@@ -58,9 +58,9 @@
     "REMOTE_SIGNAL_URL": "wss://signal.openbot.run/v1/signal",
     // Two active Signal machines (docs/remote-session-deployment.md): a is sui-alexandria, b is signal2.
     // Set both lists together, so that a revoke reaches each home. An empty REMOTE_SIGNAL_HOMES rolls back.
-    "REMOTE_SIGNAL_HOMES": "a=wss://signal1.openbot.run/v1/signal,b=wss://signal2.openbot.run/v1/signal",
+    "REMOTE_SIGNAL_HOMES": "",
     "REMOTE_AUTH_WEBHOOK_URL": "https://signal.openbot.run/internal/auth-events",
-    "REMOTE_AUTH_WEBHOOK_URLS": "https://signal1.openbot.run/internal/auth-events,https://signal2.openbot.run/internal/auth-events",
+    "REMOTE_AUTH_WEBHOOK_URLS": "",
     // The zone of signal.openbot.run. The entry check stays off until the secret SIGNAL_ENTRY_DNS_TOKEN
     // is set and REMOTE_SIGNAL_HOMES names two machines.
     "SIGNAL_ENTRY_ZONE_ID": "bac5e044ba951c390229f0e93673ebd3",

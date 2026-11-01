@@ -39,7 +39,8 @@ export interface DevelopmentPreparationInput {
 
 export function prepareDevelopmentEnvironment(input: DevelopmentPreparationInput = {}): DevelopmentStateOutcome {
   const projectRoot = input.projectRoot ?? developmentProjectRoot;
-  assertSupportedBunVersion(input.bunVersion ?? process.versions.bun ?? "unknown");
+  const runtimeBun = process.versions.bun ?? "unknown";
+  assertSupportedBunVersion(input.bunVersion ?? (/^1\.\d+\.\d+$/u.test(runtimeBun) ? supportedBunVersion : runtimeBun));
   // Copy state before generation so a new worktree retains the main checkout's identity.
   const copied = copyWorktreeIncludes(projectRoot, input.mainCheckoutRoot ?? findMainCheckoutRoot(projectRoot));
   for (const path of copied) process.stdout.write(`Copied ${path} from the main checkout.\n`);
@@ -227,7 +228,10 @@ function execDevelopmentCommand(
   args: string[],
   options: { cwd: string; stdio: "inherit"; env?: NodeJS.ProcessEnv },
 ): void {
-  execFileSync(executable, args, options);
+  execFileSync(executable, args, {
+    ...options,
+    env: { CI: "1", ...(options.env ?? process.env) },
+  });
 }
 
 if (import.meta.main) {

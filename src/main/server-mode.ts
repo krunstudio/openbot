@@ -47,10 +47,10 @@ export interface ServerModeEnvironment {
 /** Returns null unless this process is a self-hosted server that systemd started. */
 export function takeServerModeEnvironment(
   environment: NodeJS.ProcessEnv,
-  isPackaged: boolean,
+  _isPackaged: boolean,
   platform: NodeJS.Platform,
 ): ServerModeEnvironment | null {
-  if (!isPackaged || platform !== "linux" || environment.OPENBOT_SERVER !== "1") return null;
+  if (platform !== "linux" || environment.OPENBOT_SERVER !== "1") return null;
   // A hosted server signs in with its claim, not from a terminal.
   if (environment.OPENBOT_HOSTED_SERVER === "1") return null;
   const runtimeDirectory = environment.XDG_RUNTIME_DIR?.trim() ?? "";
@@ -269,7 +269,14 @@ export class ServerMode {
       .requestEmailCode(normalized)
       .pipe(Effect.mapError(({ cause }) => new RemoteWorkflowError({ cause })));
     if (state.status === "code_sent" && !state.issue) {
-      return { status: 200, lines: { challenge: state.challengeId, expires_at: state.expiresAt } };
+      return {
+        status: 200,
+        lines: {
+          challenge: state.challengeId,
+          expires_at: state.expiresAt,
+          ...(state.developmentCode ? { code: state.developmentCode } : {}),
+        },
+      };
     }
     return issueFailure(state);
   });

@@ -1,11 +1,14 @@
+import { selfHostedApiOrigin } from "@openbot/contracts/invite-links";
 import { isMobileConnectDevelopmentHost } from "@openbot/contracts/mobile-connect";
 
 export function buildContentSecurityPolicy(
   packaged: boolean,
   developmentSignalUrl?: string,
   selfHostedSignalOrigin?: string | null,
+  selfHostedAuthOrigin?: string | null,
 ): string {
   const selfHostedSignalSource = selfHostedSignalOrigin ? ` ${selfHostedSignalOrigin}` : "";
+  const selfHostedImageSource = selfHostedAuthOrigin?.startsWith("http://") ? ` ${selfHostedAuthOrigin}` : "";
   const developmentSources = packaged
     ? ""
     : ` http://localhost:* ws://localhost:*${developmentSignalSource(developmentSignalUrl)}`;
@@ -15,7 +18,7 @@ export function buildContentSecurityPolicy(
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: openbot-attachment: openbot-remote-attachment: openbot-avatar: openbot-remote-avatar: openbot-server-logo: openbot-remote-server-logo: https:${developmentImageSources}`,
+    `img-src 'self' data: openbot-attachment: openbot-remote-attachment: openbot-avatar: openbot-remote-avatar: openbot-server-logo: openbot-remote-server-logo: https:${developmentImageSources}${selfHostedImageSource}`,
     "font-src 'self' data:",
     // The lightbox plays a recording from the attachment scheme, and the preview panel plays one
     // from an object URL of the bytes that the main process sent. Neither matches `default-src`.
@@ -37,10 +40,20 @@ export function readSelfHostedSignalOrigin(
   authApiUrl: string | undefined,
   signalUrl: string | undefined,
 ): string | null {
-  if (!signalUrl) return null;
+  if (!signalUrl) {
+    const authOrigin = selfHostedApiOrigin(authApiUrl);
+    if (!authOrigin) return null;
+    const parsedAuth = new URL(authOrigin);
+    return `${parsedAuth.protocol === "https:" ? "wss:" : "ws:"}//${parsedAuth.hostname}:*`;
+  }
   if (!authApiUrl) throw new Error("OPENBOT_REMOTE_SIGNAL_URL needs OPENBOT_AUTH_API_URL.");
   const url = new URL(signalUrl);
-  if (url.protocol !== "wss:" || url.username !== "" || url.password !== "") {
+  const allowPlainWs = new URL(authApiUrl).protocol === "http:" || isMobileConnectDevelopmentHost(url.hostname);
+  if (
+    (url.protocol !== "wss:" && !(url.protocol === "ws:" && allowPlainWs)) ||
+    url.username !== "" ||
+    url.password !== ""
+  ) {
     throw new Error("OPENBOT_REMOTE_SIGNAL_URL must be a wss: URL without credentials.");
   }
   return url.origin;

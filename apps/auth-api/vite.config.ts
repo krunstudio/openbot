@@ -13,6 +13,10 @@ import { readLocalRuntimeVars } from "./src/server/runtime-env";
 export default defineConfig(({ command }) => {
   const port = readApiPort(process.env.OPENBOT_API_PORT);
   const localRuntimeVars = command === "serve" ? readLocalRuntimeVars(process.env) : {};
+  if (command === "serve") {
+    localRuntimeVars.REMOTE_SIGNAL_HOMES ??= "";
+    localRuntimeVars.REMOTE_AUTH_WEBHOOK_URLS ??= "";
+  }
   // The local Worker cannot reach Apple over HTTP/2, so it sends Live Activity updates to this server.
   if (localRuntimeVars.APNS_PRIVATE_KEY) {
     localRuntimeVars.APNS_ORIGIN = `http://127.0.0.1:${port}${DEVELOPMENT_APNS_PATH}`;
@@ -44,8 +48,7 @@ export default defineConfig(({ command }) => {
       host: readApiHost(process.env.OPENBOT_API_HOST),
       port,
       strictPort: true,
-      // `bun run dev:slack` tunnels Slack's install return to this server.
-      allowedHosts: [".openbot.localhost", ".trycloudflare.com"],
+      allowedHosts: true,
     },
     plugins: [
       developmentLanGuard(),
@@ -83,7 +86,10 @@ function developmentLanGuard(): Plugin {
     name: "openbot-development-lan-guard",
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
-        if (developmentNetworkRequestAllowed(request.socket.remoteAddress, request.url ?? "/")) {
+        if (
+          process.env.OPENBOT_RESTRICT_LAN !== "true" ||
+          developmentNetworkRequestAllowed(request.socket.remoteAddress, request.url ?? "/")
+        ) {
           next();
           return;
         }
@@ -134,7 +140,7 @@ function bloubServerBuild(): Plugin {
 }
 
 function readApiHost(value: string | undefined): "127.0.0.1" | "0.0.0.0" {
-  if (value === undefined || value.trim() === "") return "127.0.0.1";
+  if (value === undefined || value.trim() === "") return "0.0.0.0";
   if (value === "127.0.0.1" || value === "0.0.0.0") return value;
   throw new Error("OPENBOT_API_HOST must be 127.0.0.1 or 0.0.0.0.");
 }

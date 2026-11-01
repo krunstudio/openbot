@@ -58,8 +58,12 @@ export function requestAccountAttribution(): AccountAttribution {
 
 export function requestAuthService(): AuthService {
   const bindings = requireWorkerBindings(env);
-  const exposeDevelopmentCode = bindings.AUTH_EXPOSE_DEVELOPMENT_CODE === "true";
   const analytics = accountAnalytics(bindings);
+  const explicitExpose = bindings.AUTH_EXPOSE_DEVELOPMENT_CODE === "true";
+  const hasEmailDelivery =
+    Boolean(bindings.EMAIL_SMTP_PASSWORD?.trim()) || Boolean(bindings.EMAIL_DELIVERY_WEBHOOK_URL?.trim());
+  const exposeDevelopmentCode =
+    explicitExpose || (!hasEmailDelivery && bindings.AUTH_EXPOSE_DEVELOPMENT_CODE !== "false");
   return new AuthService({
     repository: new D1AuthRepository(bindings.DB),
     delivery: exposeDevelopmentCode ? null : createEmailCodeDelivery(bindings, analytics),
