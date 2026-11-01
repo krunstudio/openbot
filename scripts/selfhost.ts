@@ -127,10 +127,50 @@ async function hasLocalMarketplaceAgents(): Promise<boolean> {
   return false;
 }
 
+async function ensureLocalMigrations(): Promise<void> {
+  const d1Dir = join(projectRoot, "apps/auth-api/.wrangler/state/v3/d1/miniflare-D1DatabaseObject");
+  let hasUsersTable = false;
+  if (existsSync(d1Dir)) {
+    const { Database } = await import("bun:sqlite");
+    for (const file of readdirSync(d1Dir)) {
+      if (!file.endsWith(".sqlite")) continue;
+      const db = new Database(join(d1Dir, file));
+      try {
+        const table = db.query("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get();
+        if (table) {
+          hasUsersTable = true;
+          break;
+        }
+      } finally {
+        db.close();
+      }
+    }
+  }
+  if (!hasUsersTable) {
+    logger.info("Applying initial local D1 database migrations for Auth API...");
+    try {
+      runCommandInherited(process.execPath, ["run", "api:migrate:local"], "Applying local D1 migrations");
+    } catch (error) {
+      logger.warn(
+        "Could not apply local D1 migrations upfront:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+}
+
 async function ensureLocalMarketplaceCatalog(force = false): Promise<void> {
+  await ensureLocalMigrations();
   if (!force && (await hasLocalMarketplaceAgents())) return;
   logger.info("Seeding local Marketplace catalog (Agents & Skills)...");
-  runCommandInherited(process.execPath, ["run", "marketplace:seed:local"], "Seeding local Marketplace catalog");
+  try {
+    runCommandInherited(process.execPath, ["run", "marketplace:seed:local"], "Seeding local Marketplace catalog");
+  } catch (error) {
+    logger.warn(
+      "Marketplace catalog seeding encountered an issue, continuing server startup:",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 async function syncWithUpstream(): Promise<void> {
