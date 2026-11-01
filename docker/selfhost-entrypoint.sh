@@ -5,7 +5,7 @@ umask 077
 APP_DIR="/opt/openbot-src"
 DATA_DIR="${HOME:-/data}"
 
-mkdir -p "$DATA_DIR/.openbot" "$DATA_DIR/wrangler-state" "$DATA_DIR/.config"
+mkdir -p "$DATA_DIR/.openbot" "$DATA_DIR/wrangler-state" "$DATA_DIR/.config/OpenBot" "$DATA_DIR/OpenBot"
 
 # Persist local D1 SQLite, R2 buckets, and generated JWK secrets in /data volume
 rm -rf "$APP_DIR/.openbot" "$APP_DIR/apps/auth-api/.wrangler"

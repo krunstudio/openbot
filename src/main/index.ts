@@ -229,7 +229,7 @@ if (configureLinuxPasswordStore())
   logger.info(`No Chromium keyring for "${process.env.XDG_CURRENT_DESKTOP ?? ""}"; using gnome-libsecret.`);
 if (commandLineUserDataDirectory) {
   app.setPath("userData", resolve(commandLineUserDataDirectory));
-} else if (!app.isPackaged) {
+} else if (!app.isPackaged && !serverMode) {
   app.setPath(
     "userData",
     join(

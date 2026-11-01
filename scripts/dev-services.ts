@@ -217,7 +217,7 @@ export function developmentProfileToSeed(
 ): { profile: string; env: NodeJS.ProcessEnv } | null {
   // The seed writes the app profile, which every target except `api` opens.
   const app = specs.find((spec) => spec.name === "app");
-  if (!app) return null;
+  if (!app || app.env.OPENBOT_SERVER === "1") return null;
   const instanceId = readDevelopmentInstanceId(app.env.OPENBOT_DEV_INSTANCE_ID);
   const profile = resolve(
     resolveDevelopmentAppDataRoot(process.platform, app.env),
