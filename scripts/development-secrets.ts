@@ -5,12 +5,12 @@ import {
   existsSync,
   fsyncSync,
   linkSync,
-  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
@@ -267,7 +267,7 @@ function releaseStateLock(path: string, lock: string): void {
 
 function ensurePrivateDirectory(path: string): void {
   if (existsSync(path)) {
-    if (!lstatSync(path).isDirectory()) throw new Error("The .openbot development state path is not a directory.");
+    if (!statSync(path).isDirectory()) throw new Error("The .openbot development state path is not a directory.");
   } else {
     mkdirSync(path, { recursive: true, mode: 0o700 });
   }
@@ -275,7 +275,7 @@ function ensurePrivateDirectory(path: string): void {
 }
 
 function assertRegularPrivateFile(path: string, label: string): void {
-  const stat = lstatSync(path);
+  const stat = statSync(path);
   if (!stat.isFile()) throw new Error(`The ${label} path is not a regular file.`);
 }
 

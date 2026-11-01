@@ -207,6 +207,7 @@ function findMainCheckoutRoot(projectRoot: string): string | undefined {
     const commonDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
       cwd: projectRoot,
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     }).trim();
     return dirname(commonDir);
   } catch {
