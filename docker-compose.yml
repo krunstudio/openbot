@@ -18,6 +18,7 @@ name: openbot
 
 services:
   openbot:
+    image: ghcr.io/krunstudio/openbot:latest
     build:
       context: .
       dockerfile: Dockerfile
