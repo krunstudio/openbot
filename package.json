@@ -42,7 +42,7 @@
       "@kobalte/core": "2.0.0-alpha.0",
       "@norbert_bodziony/bloub": "0.4.1",
       "@openpanel/web": "1.4.2",
-      "@solidjs/signals": "2.0.0-rc.18",
+      "@solidjs/signals": "2.0.0-rc.20",
       "@solidjs/testing-library": "1.0.0-rc.2",
       "@solidjs/vite-plugin": "3.0.0-next.51",
       "@solidjs/web": "2.0.0-rc.18",
