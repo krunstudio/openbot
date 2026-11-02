@@ -37,13 +37,36 @@ export function createWorkerHandler(
       request: Request,
       bindings: Pick<WorkerBindings, "MARKETPLACE_INGRESS_RATE_LIMITER"> &
         Partial<
-          Pick<WorkerBindings, "SITES" | "SITE_LOCAL_ORIGIN" | "DB" | "OPENPANEL_CLIENT_ID" | "OPENPANEL_CLIENT_SECRET">
+          Pick<
+            WorkerBindings,
+            | "SITES"
+            | "SITE_LOCAL_ORIGIN"
+            | "DB"
+            | "OPENPANEL_CLIENT_ID"
+            | "OPENPANEL_CLIENT_SECRET"
+            | "REMOTE_SIGNAL_URL"
+          >
         >,
       context?: WorkerExecutionContext,
     ) {
       const hostRedirect = canonicalHostRedirect(request);
       if (hostRedirect) return hostRedirect;
-      if (request.method === "GET" && new URL(request.url).pathname === "/billing/checkout-return") {
+      const url = new URL(request.url);
+      if (url.pathname === "/v1/signal" || url.pathname.startsWith("/v1/signal/")) {
+        let signalPort = "3101";
+        const signalUrl = bindings.REMOTE_SIGNAL_URL?.trim();
+        if (signalUrl) {
+          try {
+            const parsed = new URL(signalUrl);
+            if (parsed.port) signalPort = parsed.port;
+          } catch {
+            // keep default port
+          }
+        }
+        const target = new URL(`http://127.0.0.1:${signalPort}${url.pathname}${url.search}`);
+        return fetch(target.toString(), request);
+      }
+      if (request.method === "GET" && url.pathname === "/billing/checkout-return") {
         return runApiEffect(checkoutReturnResponse(request, bindings));
       }
       const earlyResponse = await runApiEffect(

@@ -672,10 +672,7 @@ export class CentralAuthManager extends EventEmitter<CentralAuthEvents> {
       return yield* this.#requestEffect(
         `/v2/remote/hosts/${encodeURIComponent(hostId)}/ticket`,
         { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-        (value) => {
-          const decoded = decodeRemoteSessionTicket(value);
-          return { ...decoded, signalUrl: resolveSignalUrlForApiOrigin(decoded.signalUrl, this.#options.apiUrl) };
-        },
+        decodeRemoteSessionTicket,
       );
     },
     (operation) => this.#owned(operation),
