@@ -11,8 +11,17 @@ set -euo pipefail
 source "$(dirname "$(readlink -f "$0")")/openbot-hosted-update"
 umask 077
 
-SOCKET=/run/openbot/control.sock
-UNIT=openbot.service
+SOCKET="${XDG_RUNTIME_DIR:-/run/openbot}/control.sock"
+if [ ! -S "$SOCKET" ] && [ -S "/run/openbot/control.sock" ]; then
+  SOCKET="/run/openbot/control.sock"
+elif [ ! -S "$SOCKET" ] && [ -S "/run/user/$(id -u)/control.sock" ]; then
+  SOCKET="/run/user/$(id -u)/control.sock"
+fi
+
+UNIT=openbot-selfhost.service
+if ! systemctl is-active --quiet "$UNIT" 2>/dev/null && systemctl is-active --quiet openbot.service 2>/dev/null; then
+  UNIT=openbot.service
+fi
 
 usage() {
   cat <<'EOF'
