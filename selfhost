@@ -35,6 +35,17 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-launch >/dev/null 2
   eval "$(dbus-launch --sh-syntax 2>/dev/null || true)"
 fi
 
+USER_ID="$(id -u)"
+if [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+  if [ -d "/run/user/$USER_ID" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$USER_ID"
+  else
+    export XDG_RUNTIME_DIR="/run/openbot"
+    mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+    chmod 0700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+  fi
+fi
+
 export OPENBOT_SERVER=1
 export OPENBOT_SHARED_DEV_PROFILE=1
 
