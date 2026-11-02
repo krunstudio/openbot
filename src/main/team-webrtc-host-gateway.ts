@@ -1,8 +1,8 @@
-import { resolveLocalHostSignalUrl } from "@openbot/contracts/remote-control-plane";
 import { ticketNamesSignalHome } from "@openbot/contracts/signal-protocol/ticket";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger } from "@openbot/logging";
 import { Context, Deferred, Effect, Exit, Fiber, Layer, ManagedRuntime, Scope } from "effect";
+import { localHostSignalUrl } from "./local-signal-url";
 import { RemoteWorkflowError } from "./remote-service-effects";
 import type { TeamWebRtcBridge } from "./team-webrtc-bridge";
 import { type IncomingConnection, TeamWebRtcHostPeer, type TeamWebRtcHostPeerOptions } from "./team-webrtc-host-peer";
@@ -43,7 +43,6 @@ class HostSignal extends Context.Service<
       HostSignal.of({
         disconnect: (peerId) => bridge.disconnect(peerId),
         connect: Effect.fn("HostSignal.connect")(function* (peerId: string, signalUrl: string, token: string) {
-          const resolvedSignalUrl = resolveLocalHostSignalUrl(signalUrl);
           const ready = Deferred.makeUnsafe<void, RemoteWorkflowError>();
           const onReady = (id: string) => {
             if (id === peerId) Deferred.doneUnsafe(ready, Effect.void);
@@ -52,24 +51,11 @@ class HostSignal extends Context.Service<
             if (id === peerId)
               Deferred.doneUnsafe(ready, Effect.fail(new RemoteWorkflowError({ cause: new Error(message) })));
           };
-          const onSignalClosed = (id: string, code: string) => {
-            if (id === peerId) {
-              Deferred.doneUnsafe(
-                ready,
-                Effect.fail(
-                  new RemoteWorkflowError({
-                    cause: new Error(`${sourceText("error.remote.signalClosed")} (${code})`),
-                  }),
-                ),
-              );
-            }
-          };
           return yield* Effect.acquireUseRelease(
             Effect.sync(() => {
               // Local Signal can answer before the bridge command resolves.
               bridge.on("signalReady", onReady);
               bridge.on("error", onError);
-              bridge.on("signalClosed", onSignalClosed);
             }),
             () =>
               Effect.gen(function* () {
@@ -78,13 +64,7 @@ class HostSignal extends Context.Service<
                   bridge.start().pipe(
                     Effect.andThen(
                       Effect.suspend(() =>
-                        bridge.connect({
-                          peerId,
-                          signalUrl: resolvedSignalUrl,
-                          token,
-                          peer: "host",
-                          privateNetwork: privateNetwork(),
-                        }),
+                        bridge.connect({ peerId, signalUrl, token, peer: "host", privateNetwork: privateNetwork() }),
                       ),
                     ),
                     Effect.tapError((error) => Effect.sync(() => Deferred.doneUnsafe(ready, Effect.fail(error)))),
@@ -108,7 +88,6 @@ class HostSignal extends Context.Service<
               Effect.sync(() => {
                 bridge.off("signalReady", onReady);
                 bridge.off("error", onError);
-                bridge.off("signalClosed", onSignalClosed);
               }),
           );
         }),
@@ -176,16 +155,16 @@ export class TeamWebRtcHostGateway {
       localApiPort: number;
     },
   ) {
-    const hostSignalUrl = resolveLocalHostSignalUrl(input.signalUrl);
     this.#hostId = input.hostId;
     this.#lastSignalEnd = null;
-    this.#signalUrl = hostSignalUrl;
+    this.#signalUrl = input.signalUrl;
     this.#signalEnded = false;
     this.#signalHomed = ticketNamesSignalHome(input.ticket);
     this.#localApiPort = input.localApiPort;
-    logger.info(`Host gateway starting connection to Signal at ${hostSignalUrl}`);
+    const dialUrl = localHostSignalUrl(input.signalUrl);
+    if (dialUrl !== input.signalUrl) logger.info(`Host dials the Signal of this computer at ${dialUrl}.`);
     const connecting = yield* Effect.forkIn(
-      this.#provide(HostSignal.use((signal) => signal.connect(input.hostId, hostSignalUrl, input.ticket))),
+      this.#provide(HostSignal.use((signal) => signal.connect(input.hostId, dialUrl, input.ticket))),
       this.#connectionScope,
       { startImmediately: false },
     );
@@ -425,11 +404,12 @@ export class TeamWebRtcHostGateway {
     yield* this.#clearPeers();
     yield* HostSignal.use((signal) => signal.disconnect(hostId)).pipe(Effect.catch(() => Effect.void));
     if (this.#hostId !== hostId) return;
-    const hostSignalUrl = resolveLocalHostSignalUrl(bootstrap.signalUrl);
-    this.#signalUrl = hostSignalUrl;
+    this.#signalUrl = bootstrap.signalUrl;
     this.#signalEnded = false;
     this.#signalHomed = ticketNamesSignalHome(bootstrap.ticket);
-    yield* HostSignal.use((signal) => signal.connect(hostId, hostSignalUrl, bootstrap.ticket));
+    yield* HostSignal.use((signal) =>
+      signal.connect(hostId, localHostSignalUrl(bootstrap.signalUrl), bootstrap.ticket),
+    );
     if (this.#hostId !== hostId)
       yield* HostSignal.use((signal) => signal.disconnect(hostId)).pipe(Effect.catch(() => Effect.void));
   });

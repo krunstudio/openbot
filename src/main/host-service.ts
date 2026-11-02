@@ -41,7 +41,6 @@ import type {
 } from "@openbot/contracts/ipc";
 import { type AgentAccessLevel, conversationMessageSender, SIGNED_OUT_CHANNEL_MEMBER_ID } from "@openbot/contracts/ipc";
 import type { LiveActivityRelayPush } from "@openbot/contracts/live-activity-relay";
-import { resolveLocalHostSignalUrl } from "@openbot/contracts/remote-control-plane";
 import type { HostRestartState } from "@openbot/contracts/team-protocol/host-update-v1";
 import { sourceText } from "@openbot/i18n/source";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
@@ -487,11 +486,7 @@ export class HostService extends EventEmitter<HostEvents> {
                 return yield* new RemoteWorkflowError({
                   cause: new Error(sourceText("error.host.webRtcNotConfigured")),
                 });
-              const bootstrap = yield* issueTicket(hostId, failedSignalUrl === undefined ? {} : { failedSignalUrl });
-              return {
-                ...bootstrap,
-                signalUrl: resolveLocalHostSignalUrl(bootstrap.signalUrl),
-              };
+              return yield* issueTicket(hostId, failedSignalUrl === undefined ? {} : { failedSignalUrl });
             }),
           onSignalRecoveryFailure: (error, reason) => {
             logger.warn(`Host phase ${this.#status.phase} -> error: Signal ${reason}.`);
@@ -964,12 +959,10 @@ export class HostService extends EventEmitter<HostEvents> {
         failedSignalUrl === null ? {} : { failedSignalUrl },
       );
       if (yield* this.#cancelSupersededStartEffect(generation)) return this.getStatus();
-      const hostSignalUrl = resolveLocalHostSignalUrl(bootstrap.signalUrl);
-      logger.info(`Host starting WebRTC gateway for server ${identity.serverId} with Signal URL: ${hostSignalUrl}`);
       yield* gateway
         .start({
           hostId: identity.serverId,
-          signalUrl: hostSignalUrl,
+          signalUrl: bootstrap.signalUrl,
           ticket: bootstrap.ticket,
           localApiPort: apiPort,
         })
