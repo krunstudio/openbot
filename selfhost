@@ -19,6 +19,25 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
+# Siapkan virtual display (Xvfb) jika berjalan di server Linux tanpa layar (headless)
+if [ "$(uname -s)" = "Linux" ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  if command -v Xvfb >/dev/null 2>&1; then
+    rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 /tmp/.X1-lock /tmp/.X11-unix/X1
+    (Xvfb :0 -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &)
+    (Xvfb :1 -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 &)
+    export DISPLAY=:0
+    export OPENBOT_AGENT_DISPLAY=:1
+    sleep 0.5
+  fi
+fi
+
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-launch >/dev/null 2>&1; then
+  eval "$(dbus-launch --sh-syntax 2>/dev/null || true)"
+fi
+
+export OPENBOT_SERVER=1
+export OPENBOT_SHARED_DEV_PROFILE=1
+
 case "${1:-}" in
   stop|status|forget)
     cmd="$1"
@@ -26,6 +45,8 @@ case "${1:-}" in
     exec bun "$SCRIPT_DIR/scripts/dev-stack.ts" "$cmd" "$@"
     ;;
   *)
-    exec bun "$SCRIPT_DIR/scripts/selfhost.ts" "$@"
+    mode="${1:-app}"
+    if [ "$#" -gt 0 ]; then shift; fi
+    exec bun "$SCRIPT_DIR/scripts/selfhost.ts" "$mode" "$@"
     ;;
 esac
