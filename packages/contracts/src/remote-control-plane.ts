@@ -61,6 +61,15 @@ export function resolveSignalUrlForApiOrigin(signalUrl: string, apiUrl: string):
   try {
     const signal = new URL(signalUrl);
     const api = new URL(apiUrl);
+    if (api.protocol === "https:" && signal.protocol === "ws:") {
+      signal.protocol = "wss:";
+      if (isMobileConnectDevelopmentHost(signal.hostname)) {
+        signal.host = api.host;
+        signal.port = "";
+        signal.pathname = "/v1/signal";
+      }
+      return signal.toString();
+    }
     if (
       signal.protocol === "ws:" &&
       isMobileConnectDevelopmentHost(signal.hostname) &&

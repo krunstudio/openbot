@@ -49,6 +49,13 @@ export default defineConfig(({ command }) => {
       port,
       strictPort: true,
       allowedHosts: true,
+      proxy: {
+        "/v1/signal": {
+          target: `http://127.0.0.1:${process.env.REMOTE_SIGNAL_PORT || "3101"}`,
+          ws: true,
+          changeOrigin: true,
+        },
+      },
     },
     plugins: [
       developmentLanGuard(),
