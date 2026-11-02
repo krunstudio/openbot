@@ -7,6 +7,7 @@ import { defineConfig, normalizePath, type Plugin } from "vite";
 import { contentImages } from "./content-images";
 import { DEVELOPMENT_APNS_PATH, developmentApnsProxy } from "./dev-apns-proxy";
 import { developmentNetworkRequestAllowed } from "./dev-network-access";
+import { developmentSignalProxy } from "./dev-signal-proxy";
 import { rendererPreviewAlias, rendererWebAlias } from "./renderer-preview-alias";
 import { readLocalRuntimeVars } from "./src/server/runtime-env";
 
@@ -60,6 +61,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       developmentLanGuard(),
       developmentApnsProxy(),
+      developmentSignalProxy(),
       cloudflare({
         viteEnvironment: { name: "ssr" },
         config(config) {
