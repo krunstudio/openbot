@@ -357,7 +357,15 @@ function connectSignal(state: PeerState, prepared: WebSocket | null = null): voi
     holdSignalAfterClose(event.code, refusal);
     if (!state.closed) scheduleSignalReconnect(state);
   });
-  socket.addEventListener("error", () => socket.close());
+  socket.addEventListener("error", () => {
+    post({
+      type: "peer-error",
+      peerId: state.id,
+      code: "socket_error",
+      message: `WebSocket error connecting to ${state.signalUrl}`,
+    });
+    socket.close();
+  });
   if (open) sendHello();
 }
 

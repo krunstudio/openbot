@@ -85,6 +85,20 @@ export function resolveSignalUrlForApiOrigin(signalUrl: string, apiUrl: string):
   }
 }
 
+export function resolveLocalHostSignalUrl(signalUrl: string): string {
+  try {
+    const signal = new URL(signalUrl);
+    if (isMobileConnectDevelopmentHost(signal.hostname)) {
+      signal.protocol = "ws:";
+      signal.hostname = "127.0.0.1";
+      return signal.toString();
+    }
+    return signalUrl;
+  } catch {
+    return signalUrl;
+  }
+}
+
 function text(value: unknown, field: string): string {
   if (!isString(value)) throw new Error(`Invalid ${field}.`);
   return value;
