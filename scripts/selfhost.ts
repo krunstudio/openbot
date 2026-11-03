@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir, networkInterfaces } from "node:os";
 import { delimiter, join, resolve } from "node:path";
+import { isMobileConnectDevelopmentHost } from "@openbot/contracts/mobile-connect";
 import { createOpenBotLogger } from "../packages/logging/src";
 import { selectMobileConnectLanAddress } from "./dev-services";
 
@@ -255,10 +256,17 @@ async function main(): Promise<void> {
   const mode = args[0] === "web" || args[0] === "api" ? "web" : args[0] === "app" ? "app" : defaultTarget();
   const restArgs = args[0] === "web" || args[0] === "api" || args[0] === "app" ? args.slice(1) : args;
 
-  const lanAddress = process.env.OPENBOT_PUBLIC_HOST?.trim() || selectMobileConnectLanAddress(networkInterfaces());
+  const rawPublicHost = process.env.OPENBOT_PUBLIC_HOST?.trim();
+  const cleanPublicHost = rawPublicHost
+    ? (rawPublicHost.replace(/^https?:\/\//iu, "").split(/[/:]/u)[0] ?? null)
+    : null;
+  const lanAddress = cleanPublicHost || selectMobileConnectLanAddress(networkInterfaces());
   const apiPort = process.env.OPENBOT_API_PORT?.trim() || "3100";
   const signalPort = process.env.REMOTE_SIGNAL_PORT?.trim() || "3101";
   const publicHost = lanAddress ?? "127.0.0.1";
+  const isDevHost = isMobileConnectDevelopmentHost(publicHost);
+  const webOrigin = isDevHost ? `http://${publicHost}:${apiPort}` : `https://${publicHost}`;
+  const signalOrigin = isDevHost ? `ws://${publicHost}:${signalPort}/v1/signal` : `wss://${publicHost}/v1/signal`;
 
   logger.info("============================================================");
   logger.info("OpenBot 100% Self-Hosted Stack");
@@ -267,10 +275,10 @@ async function main(): Promise<void> {
   );
   logger.info(`WebUI (Local):     http://127.0.0.1:${apiPort}/app`);
   if (lanAddress) {
-    logger.info(`WebUI (LAN/VPN):   http://${lanAddress}:${apiPort}/app`);
+    logger.info(`WebUI (Public/LAN): ${webOrigin}/app`);
   }
-  logger.info(`Account API URL:   http://${publicHost}:${apiPort}`);
-  logger.info(`Signal WebSocket:  ws://${publicHost}:${signalPort}/v1/signal`);
+  logger.info(`Account API URL:   ${webOrigin}`);
+  logger.info(`Signal WebSocket:  ${signalOrigin}`);
   logger.info("Login OTP Mode:    Displayed directly on screen (unless SMTP is configured)");
   logger.info("Upstream Sync:     Run `bun scripts/selfhost.ts sync` or pass `--sync`");
   logger.info("============================================================");

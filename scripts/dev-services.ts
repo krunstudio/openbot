@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMobileConnectDevelopmentHost } from "@openbot/contracts/mobile-connect";
 import { createOpenBotLogger, toLogValue } from "@openbot/logging";
 import { cliSpawnTarget } from "../src/backend/cli";
 import {
@@ -669,7 +670,8 @@ export function configureMobileConnectDevelopmentNetwork(
   const apiPort = readPort(environment.OPENBOT_API_PORT);
   if (!apiPort) return;
   const exposeToLan = environment.OPENBOT_API_HOST !== "127.0.0.1";
-  const publicHost = environment.OPENBOT_PUBLIC_HOST?.trim();
+  const rawPublicHost = environment.OPENBOT_PUBLIC_HOST?.trim();
+  const publicHost = rawPublicHost ? (rawPublicHost.replace(/^https?:\/\//iu, "").split(/[/:]/u)[0] ?? null) : null;
   const address = publicHost ? publicHost : exposeToLan ? selectMobileConnectLanAddress(interfaces) : null;
 
   if (services.includes("remote")) {
@@ -680,14 +682,20 @@ export function configureMobileConnectDevelopmentNetwork(
     environment.REMOTE_CONTROL_PLANE_URL ??= `http://127.0.0.1:${apiPort}`;
     environment.REMOTE_AUTH_WEBHOOK_URL ??= `http://127.0.0.1:${signalPort}/internal/auth-events`;
     environment.REMOTE_AUTH_WEBHOOK_URLS ??= "";
-    environment.REMOTE_SIGNAL_URL ??= `ws://${address ?? "127.0.0.1"}:${signalPort}/v1/signal`;
+    environment.REMOTE_SIGNAL_URL ??=
+      address && !isMobileConnectDevelopmentHost(address)
+        ? `wss://${address}/v1/signal`
+        : `ws://${address ?? "127.0.0.1"}:${signalPort}/v1/signal`;
     environment.REMOTE_SIGNAL_HOMES ??= "";
     environment.TURN_HOST ??= address ?? "127.0.0.1";
   }
 
   if (!address) return;
   environment.OPENBOT_API_HOST ??= "0.0.0.0";
-  environment.OPENBOT_MOBILE_AUTH_API_URL ??= `http://${address}:${apiPort}`;
+  // Released phone apps accept http only for a development host. A public name is behind TLS.
+  environment.OPENBOT_MOBILE_AUTH_API_URL ??= isMobileConnectDevelopmentHost(address)
+    ? `http://${address}:${apiPort}`
+    : `https://${address}`;
 }
 
 export function selectMobileConnectLanAddress(interfaces: DevelopmentNetworkInterfaces): string | null {
