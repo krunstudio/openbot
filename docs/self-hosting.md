@@ -4,6 +4,36 @@ This guide tells you how to run your own account service (the Account API Worker
 for remote access. Use it when you do not want `api.openbot.run` and `signal.openbot.run` to carry
 your account and connection set-up.
 
+## Quick start: All-in-one self-hosted stack (`./selfhost` or Docker Compose)
+
+You can run the complete stack (Account API, WebUI at `/app`, Signal WebSocket service, local D1 database, Marketplace catalog, and headless OpenBot Host) on one Linux server or container:
+
+1. **Same network (LAN / Tailscale)**:
+   ```sh
+   ./selfhost
+   ```
+   OpenBot detects your private LAN IPv4 address automatically and serves the WebUI at `http://<LAN-IP>:3100/app` and Signal at `ws://<LAN-IP>:3101/v1/signal`.
+
+2. **Different network (WAN / mobile data via Cloudflare Tunnel or HTTPS reverse proxy)**:
+   Point your Cloudflare Tunnel (`cloudflared`) or HTTPS reverse proxy to `http://127.0.0.1:3100`, then start the stack with your public domain:
+   ```sh
+   ./selfhost --public-host ob.example.com
+   ```
+   - Over HTTPS, port `3100` proxies `/v1/signal` WebSocket upgrades directly to the local Signal service on `127.0.0.1:3101`, so you only need to expose port `3100`.
+   - `./selfhost` auto-detects `cloudflared` ingress hostnames when available and persists `OPENBOT_PUBLIC_HOST` in `.openbot/dev-state.json` across `systemd` restarts.
+   - If you change `OPENBOT_PUBLIC_HOST`, run `./scripts/hosting/openbot mobile-connect` again and scan the new QR code so the mobile app uses `https://ob.example.com`.
+
+3. **WebRTC across networks (STUN and TURN)**:
+   - By default, Signal provides public STUN servers (`stun:stun.cloudflare.com:3478`, `stun:stun.l.google.com:19302`, `stun:stun1.l.google.com:19302`) so peers behind standard NAT can discover their public IP and connect directly.
+   - If both the server and client networks use strict Symmetric NAT / CGNAT, configure a Cloudflare Calls TURN key (or set `REMOTE_ICE_SERVERS` to a JSON array of `RTCIceServer` objects):
+     ```sh
+     ./selfhost --public-host ob.example.com --turn-key-id <KEY_ID> --turn-api-token <API_TOKEN>
+     ```
+
+---
+
+## Separate production deployment (Cloudflare Workers + Dedicated Signal/coturn)
+
 Our Worker does not issue a ticket for another Signal. A ticket gives access to a host, and our key
 signs it, so a ticket for your Signal would also open our Signal. Thus a self-hosted Signal needs a
 self-hosted account service with its own keys. See

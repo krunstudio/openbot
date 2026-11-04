@@ -82,6 +82,31 @@ desktop session on the same host or VM. Google sends the callback to that host t
 `127.0.0.1`; a server with no desktop cannot complete this sign-in. See
 [Gemini setup](docs/architecture/providers.md#gemini).
 
+#### 100% Self-Hosted Stack (WebUI + Account API + Signal + Headless Host)
+
+To run the complete self-hosted OpenBot stack (WebUI at `/app`, local Account API with D1, Signal WebSocket relay, Marketplace catalog, and headless Electron host) without external OpenBot cloud dependencies:
+
+```bash
+# Same network (LAN): auto-detects your private LAN IP
+./selfhost
+
+# Cross-network (Cloudflare Tunnel or HTTPS reverse proxy on port 3100):
+./selfhost --public-host ob.example.com
+
+# Optional: add Cloudflare Calls TURN relay keys for strict Symmetric NAT / CGNAT networks
+./selfhost --public-host ob.example.com --turn-key-id <KEY_ID> --turn-api-token <API_TOKEN>
+```
+
+`./selfhost` saves `--public-host`, `--turn-key-id`, and `--turn-api-token` in `.openbot/dev-state.json` (and auto-detects `cloudflared` ingress hostnames on Linux), so `openbot-selfhost.service` keeps these settings across restarts. Over HTTPS (`https://<public-host>`), Signal WebSocket traffic is proxied on the same port (`wss://<public-host>/v1/signal` -> `127.0.0.1:3101`), so a single Cloudflare Tunnel or reverse proxy pointing to `http://127.0.0.1:3100` serves both the WebUI/API and Signal.
+
+Sign in the host and generate a Mobile Connect QR code from a terminal:
+
+```bash
+./scripts/hosting/openbot login
+./scripts/hosting/openbot mobile-connect
+./scripts/hosting/openbot status
+```
+
 #### Linux server with no screen
 
 To run OpenBot as an always-on server of your account on a VPS or home server (Ubuntu 24.04 or

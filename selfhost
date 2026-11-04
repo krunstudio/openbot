@@ -55,9 +55,12 @@ case "${1:-}" in
     shift
     exec bun "$SCRIPT_DIR/scripts/dev-stack.ts" "$cmd" "$@"
     ;;
-  *)
-    mode="${1:-app}"
-    if [ "$#" -gt 0 ]; then shift; fi
+  app|web|api|sync)
+    mode="$1"
+    shift
     exec bun "$SCRIPT_DIR/scripts/selfhost.ts" "$mode" "$@"
+    ;;
+  *)
+    exec bun "$SCRIPT_DIR/scripts/selfhost.ts" "$@"
     ;;
 esac
