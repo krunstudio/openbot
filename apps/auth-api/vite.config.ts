@@ -60,12 +60,14 @@ export default defineConfig(({ command }) => {
     plugins: [
       developmentLanGuard(),
       developmentApnsProxy(),
-      cloudflare({
-        viteEnvironment: { name: "ssr" },
-        config(config) {
-          return { vars: { ...config.vars, ...localRuntimeVars } };
-        },
-      }),
+      ...excludeSignalFromCloudflareUpgrade(
+        cloudflare({
+          viteEnvironment: { name: "ssr" },
+          config(config) {
+            return { vars: { ...config.vars, ...localRuntimeVars } };
+          },
+        }),
+      ),
       lazyLanguageCatalogs(),
       bloubServerBuild(),
       tanstackStart(),
@@ -78,6 +80,41 @@ export default defineConfig(({ command }) => {
     ],
   };
 });
+
+function isSignalUpgradeUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  return url === "/v1/signal" || url.startsWith("/v1/signal?") || url.startsWith("/v1/signal/");
+}
+
+function excludeSignalFromCloudflareUpgrade(cloudflarePlugins: Plugin[]): Plugin[] {
+  const savedProtocols = new WeakMap<object, string | undefined>();
+  const beforeCloudflare: Plugin = {
+    name: "openbot-signal-upgrade-before-cloudflare",
+    configureServer(server) {
+      server.httpServer?.on("upgrade", (request) => {
+        if (!isSignalUpgradeUrl(request.url)) return;
+        savedProtocols.set(request, request.headers["sec-websocket-protocol"]);
+        request.headers["sec-websocket-protocol"] = "vite-signal-proxy";
+      });
+    },
+  };
+  const afterCloudflare: Plugin = {
+    name: "openbot-signal-upgrade-after-cloudflare",
+    configureServer(server) {
+      server.httpServer?.on("upgrade", (request) => {
+        if (!isSignalUpgradeUrl(request.url)) return;
+        const original = savedProtocols.get(request);
+        savedProtocols.delete(request);
+        if (original === undefined) {
+          delete request.headers["sec-websocket-protocol"];
+        } else {
+          request.headers["sec-websocket-protocol"] = original;
+        }
+      });
+    },
+  };
+  return [beforeCloudflare, ...cloudflarePlugins, afterCloudflare];
+}
 
 function readApiPort(value: string | undefined): number {
   if (value === undefined || value.trim() === "") return 3_100;

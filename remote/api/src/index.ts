@@ -293,6 +293,54 @@ class ControlPlane extends Context.Service<
 
 const controlPlane = ManagedRuntime.make(ControlPlane.layer);
 const controlPlaneService = await controlPlane.runPromise(ControlPlane);
+
+const CloudflareIceServerSchema = Schema.Struct({
+  urls: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
+  username: Schema.optionalKey(Schema.String),
+  credential: Schema.optionalKey(Schema.String),
+});
+const CloudflareTurnResponseSchema = Schema.Struct({
+  iceServers: Schema.optionalKey(Schema.Union([CloudflareIceServerSchema, Schema.Array(CloudflareIceServerSchema)])),
+});
+
+let cachedCloudflareIceServers: import("@openbot/contracts/signal-protocol/messages").IceServer[] = [];
+async function refreshCloudflareTurnCredentials(): Promise<void> {
+  if (!config.cloudflareTurn) return;
+  try {
+    const response = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(config.cloudflareTurn.keyId)}/credentials/generate`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.cloudflareTurn.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ttl: 86_400 }),
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) return;
+    const payload = Schema.decodeUnknownSync(CloudflareTurnResponseSchema)(await response.json());
+    if (payload.iceServers) {
+      const list = Array.isArray(payload.iceServers) ? payload.iceServers : [payload.iceServers];
+      cachedCloudflareIceServers = list.map((server) => ({
+        urls: typeof server.urls === "string" ? server.urls : [...server.urls],
+        ...(server.username !== undefined ? { username: server.username } : {}),
+        ...(server.credential !== undefined ? { credential: server.credential } : {}),
+      }));
+    }
+  } catch {
+    // Keep existing cached credentials if refresh fails.
+  }
+}
+if (config.cloudflareTurn) {
+  await refreshCloudflareTurnCredentials();
+}
+const cloudflareTurnTimer = config.cloudflareTurn
+  ? setInterval(() => void refreshCloudflareTurnCredentials(), 6 * 60 * 60_000)
+  : null;
+cloudflareTurnTimer?.unref();
+
 const tokens = new RemoteTokenService(
   config,
   (claims) =>
@@ -310,6 +358,7 @@ const tokens = new RemoteTokenService(
     ),
   {
     turnHost: (hostId) => turnRelays.pick(hostId),
+    dynamicIceServers: () => cachedCloudflareIceServers,
     validateSlackRoute: (hostId, teams) =>
       controlPlaneService
         .validateSlackRoute(hostId, teams)

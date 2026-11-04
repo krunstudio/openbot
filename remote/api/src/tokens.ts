@@ -154,6 +154,9 @@ export class RemoteTokenService {
   readonly #turnHost: (hostId: string) => string;
   readonly #turnPort: number;
   readonly #turnTlsPort: number;
+  readonly #extraIceServers: IceServer[];
+  readonly #disableLocalTurn: boolean;
+  readonly #dynamicIceServers: () => IceServer[];
   readonly #validateResumeClaims: (claims: RemoteTicketClaims) => Effect.Effect<boolean, RemoteTokenUnavailableError>;
   readonly #validateSlackRoute: (hostId: string, teams: SlackRouteTeam[]) => Effect.Effect<string[], RemoteTokenError>;
   readonly #validateTelegramRoute: (
@@ -186,6 +189,8 @@ export class RemoteTokenService {
       | "turnPort"
       | "turnTlsPort"
       | "signalId"
+      | "extraIceServers"
+      | "disableLocalTurn"
     >,
     validateResumeClaims: (claims: RemoteTicketClaims) => Effect.Effect<boolean, RemoteTokenUnavailableError> = () =>
       Effect.succeed(false),
@@ -193,6 +198,7 @@ export class RemoteTokenService {
       fetch?: FetchImplementation;
       // Picks the TURN relay of a host. Without it, every host gets `TURN_HOST`.
       turnHost?: (hostId: string) => string;
+      dynamicIceServers?: () => IceServer[];
       // Asks the account service which links of a route are current. Without it, none is.
       validateSlackRoute?: (hostId: string, teams: SlackRouteTeam[]) => Effect.Effect<string[], RemoteTokenError>;
       // Asks the account service which chats of a Telegram route are current. Without it, none is.
@@ -230,6 +236,9 @@ export class RemoteTokenService {
     this.#turnHost = options.turnHost ?? (() => localTurnHost);
     this.#turnPort = config.turnPort;
     this.#turnTlsPort = config.turnTlsPort;
+    this.#extraIceServers = config.extraIceServers ?? [];
+    this.#disableLocalTurn = config.disableLocalTurn === true;
+    this.#dynamicIceServers = options.dynamicIceServers ?? (() => []);
     this.#validateResumeClaims = validateResumeClaims;
     this.#validateSlackRoute = options.validateSlackRoute ?? (() => Effect.succeed([]));
     this.#validateTelegramRoute = options.validateTelegramRoute ?? (() => Effect.succeed([]));
@@ -499,6 +508,10 @@ export class RemoteTokenService {
   iceServers(claims: RemoteTicketClaims, nowSeconds = Math.floor(Date.now() / 1_000)): IceServer[] {
     const expiration = Math.min(claims.sessionExpiresAt, nowSeconds + SIGNAL_TURN_CREDENTIAL_TTL_SECONDS);
     if (expiration <= nowSeconds) throw new Error("The remote session has expired.");
+    const extra = [...this.#extraIceServers, ...this.#dynamicIceServers()];
+    if (this.#disableLocalTurn && extra.length > 0) {
+      return extra;
+    }
     const username = `${expiration}:${claims.sessionId}`;
     const credential = createHmac("sha1", this.#turnSecret).update(username).digest("base64");
     const host = this.#turnHost(claims.hostId);
@@ -513,6 +526,7 @@ export class RemoteTokenService {
         username,
         credential,
       },
+      ...extra,
     ];
   }
 }

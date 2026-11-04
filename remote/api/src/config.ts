@@ -1,4 +1,11 @@
+import type { IceServer } from "@openbot/contracts/signal-protocol/messages";
 import { TELEGRAM_BOT_ID_PATTERN } from "@openbot/contracts/signal-protocol/telegram-route";
+import { Schema } from "effect";
+
+export interface CloudflareTurnConfig {
+  keyId: string;
+  apiToken: string;
+}
 
 export interface RemoteApiConfig {
   host: string;
@@ -20,6 +27,9 @@ export interface RemoteApiConfig {
   turnHosts: string[];
   turnPort: number;
   turnTlsPort: number;
+  extraIceServers?: IceServer[];
+  disableLocalTurn?: boolean;
+  cloudflareTurn?: CloudflareTurnConfig | null;
   metricsToken: string | null;
   maximumConnectionsPerUser: number;
   maximumConnectionsPerIp: number;
@@ -186,6 +196,9 @@ export function readRemoteApiConfig(environment: Record<string, string | undefin
     turnHosts: readTurnHosts(required(environment.TURN_HOST, "TURN_HOST"), environment.TURN_EXTRA_HOSTS),
     turnPort: positiveInteger(environment.TURN_PORT, 3478),
     turnTlsPort: positiveInteger(environment.TURN_TLS_PORT, 5349),
+    extraIceServers: readExtraIceServers(environment.REMOTE_ICE_SERVERS),
+    disableLocalTurn: environment.REMOTE_DISABLE_LOCAL_TURN === "true",
+    cloudflareTurn: readCloudflareTurnConfig(environment.CLOUDFLARE_TURN_KEY_ID, environment.CLOUDFLARE_TURN_API_TOKEN),
     metricsToken: optional(environment.REMOTE_METRICS_TOKEN),
     maximumConnectionsPerUser: positiveInteger(environment.REMOTE_MAX_CONNECTIONS_PER_USER, 32),
     maximumConnectionsPerIp: positiveInteger(environment.REMOTE_MAX_CONNECTIONS_PER_IP, 32),
@@ -203,6 +216,39 @@ export function readRemoteApiConfig(environment: Record<string, string | undefin
     signalId: readSignalId(environment.SIGNAL_ID),
     entry: readEntryConfig(environment),
   };
+}
+
+const IceServerSchema = Schema.Struct({
+  urls: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
+  username: Schema.optionalKey(Schema.String),
+  credential: Schema.optionalKey(Schema.String),
+});
+const IceServersFromJson = Schema.fromJsonString(Schema.Array(IceServerSchema));
+
+function readExtraIceServers(value: string | undefined): IceServer[] {
+  const raw = value?.trim();
+  if (!raw) return [];
+  try {
+    const decoded = Schema.decodeUnknownSync(IceServersFromJson)(raw);
+    return decoded.map((server) => ({
+      urls: typeof server.urls === "string" ? server.urls : [...server.urls],
+      ...(server.username !== undefined ? { username: server.username } : {}),
+      ...(server.credential !== undefined ? { credential: server.credential } : {}),
+    }));
+  } catch {
+    console.error("REMOTE_ICE_SERVERS must be a valid JSON array of RTCIceServer objects.");
+    return [];
+  }
+}
+
+function readCloudflareTurnConfig(
+  keyId: string | undefined,
+  apiToken: string | undefined,
+): CloudflareTurnConfig | null {
+  const cleanKeyId = keyId?.trim();
+  const cleanToken = apiToken?.trim();
+  if (!cleanKeyId || !cleanToken) return null;
+  return { keyId: cleanKeyId, apiToken: cleanToken };
 }
 
 /** A missing or weak secret turns off only the GitHub route: the remote sessions keep running. */

@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir, networkInterfaces } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { isMobileConnectDevelopmentHost } from "@openbot/contracts/mobile-connect";
 import { createOpenBotLogger } from "../packages/logging/src";
 import { selectMobileConnectLanAddress } from "./dev-services";
+import { readDevelopmentState, setDevelopmentOverrides } from "./development-secrets";
 
 const logger = createOpenBotLogger("selfhost");
 const projectRoot = resolve(import.meta.dirname, "..");
@@ -233,26 +234,139 @@ async function syncWithUpstream(): Promise<void> {
   logger.info("Self-hosted OpenBot is synced and ready.");
 }
 
+function detectCloudflaredPublicHost(): string | null {
+  const home = homedir();
+  const configCandidates = [
+    "/etc/cloudflared/config.yml",
+    "/etc/cloudflared/config.yaml",
+    join(home, ".cloudflared/config.yml"),
+    join(home, ".cloudflared/config.yaml"),
+  ];
+  for (const configPath of configCandidates) {
+    try {
+      if (!existsSync(configPath)) continue;
+      const content = readFileSync(configPath, "utf8");
+      const match = content.match(/^\s*-?\s*hostname:\s*["']?([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})["']?\s*$/mu);
+      if (match?.[1]) return match[1].trim();
+    } catch {
+      // Ignore unreadable config files.
+    }
+  }
+  if (process.platform === "linux") {
+    try {
+      const result = spawnSync("journalctl", ["-u", "cloudflared", "-n", "200", "--no-pager"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 3_000,
+      });
+      const output = result.stdout ?? "";
+      const matches = [...output.matchAll(/\\"hostname\\":\\"([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\\"/gu)];
+      const lastMatch = matches.at(-1)?.[1];
+      if (lastMatch) return lastMatch.trim();
+    } catch {
+      // Ignore if journalctl is unavailable.
+    }
+  }
+  return null;
+}
+
+function consumeFlagValue(args: string[], flag: string): { value: string | undefined; remaining: string[] } {
+  const remaining: string[] = [];
+  let value: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === undefined) continue;
+    if (arg === flag) {
+      value = args[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith(`${flag}=`)) {
+      value = arg.slice(flag.length + 1);
+      continue;
+    }
+    remaining.push(arg);
+  }
+  return { value: value?.trim() || undefined, remaining };
+}
+
 async function main(): Promise<void> {
   process.env.PATH = buildSelfHostPath();
   ensureLinuxChromeSandbox();
   const rawArgs = process.argv.slice(2);
+  const publicHostFlag = consumeFlagValue(rawArgs, "--public-host");
+  const turnKeyIdFlag = consumeFlagValue(publicHostFlag.remaining, "--turn-key-id");
+  const turnApiTokenFlag = consumeFlagValue(turnKeyIdFlag.remaining, "--turn-api-token");
+  const filteredRawArgs = turnApiTokenFlag.remaining;
+
+  const devState = readDevelopmentState(projectRoot);
+  const stateUpdates: Record<string, string> = {};
+
+  const configuredPublicHost =
+    publicHostFlag.value ??
+    process.env.OPENBOT_PUBLIC_HOST?.trim() ??
+    devState.overrides.OPENBOT_PUBLIC_HOST?.trim() ??
+    detectCloudflaredPublicHost() ??
+    undefined;
+  if (configuredPublicHost) {
+    const cleaned = configuredPublicHost
+      .replace(/^https?:\/\//iu, "")
+      .split(/[/:]/u)[0]
+      ?.trim();
+    if (cleaned) {
+      process.env.OPENBOT_PUBLIC_HOST = cleaned;
+      if (devState.overrides.OPENBOT_PUBLIC_HOST !== cleaned) {
+        stateUpdates.OPENBOT_PUBLIC_HOST = cleaned;
+      }
+    }
+  }
+
+  const configuredTurnKeyId =
+    turnKeyIdFlag.value ??
+    process.env.CLOUDFLARE_TURN_KEY_ID?.trim() ??
+    devState.overrides.CLOUDFLARE_TURN_KEY_ID?.trim();
+  if (configuredTurnKeyId) {
+    process.env.CLOUDFLARE_TURN_KEY_ID = configuredTurnKeyId;
+    if (devState.overrides.CLOUDFLARE_TURN_KEY_ID !== configuredTurnKeyId) {
+      stateUpdates.CLOUDFLARE_TURN_KEY_ID = configuredTurnKeyId;
+    }
+  }
+
+  const configuredTurnApiToken =
+    turnApiTokenFlag.value ??
+    process.env.CLOUDFLARE_TURN_API_TOKEN?.trim() ??
+    devState.overrides.CLOUDFLARE_TURN_API_TOKEN?.trim();
+  if (configuredTurnApiToken) {
+    process.env.CLOUDFLARE_TURN_API_TOKEN = configuredTurnApiToken;
+    if (devState.overrides.CLOUDFLARE_TURN_API_TOKEN !== configuredTurnApiToken) {
+      stateUpdates.CLOUDFLARE_TURN_API_TOKEN = configuredTurnApiToken;
+    }
+  }
+
+  if (Object.keys(stateUpdates).length > 0) {
+    try {
+      setDevelopmentOverrides(projectRoot, stateUpdates);
+    } catch {
+      // Ignore lock contention if another process is updating state concurrently.
+    }
+  }
+
   const shouldSync =
-    rawArgs[0] === "sync" ||
-    rawArgs.includes("--sync") ||
+    filteredRawArgs[0] === "sync" ||
+    filteredRawArgs.includes("--sync") ||
     process.env.OPENBOT_AUTO_SYNC === "1" ||
     process.env.OPENBOT_AUTO_SYNC === "true";
 
   if (shouldSync) {
     await syncWithUpstream();
-    if (rawArgs[0] === "sync") {
+    if (filteredRawArgs[0] === "sync") {
       return;
     }
   } else {
     await ensureLocalMarketplaceCatalog(false);
   }
 
-  const args = rawArgs.filter((arg) => arg !== "--sync");
+  const args = filteredRawArgs.filter((arg) => arg !== "--sync");
   const mode = args[0] === "web" || args[0] === "api" ? "web" : args[0] === "app" ? "app" : defaultTarget();
   const restArgs = args[0] === "web" || args[0] === "api" || args[0] === "app" ? args.slice(1) : args;
 
@@ -279,6 +393,9 @@ async function main(): Promise<void> {
   }
   logger.info(`Account API URL:   ${webOrigin}`);
   logger.info(`Signal WebSocket:  ${signalOrigin}`);
+  logger.info(
+    `WebRTC ICE Mode:   ${process.env.CLOUDFLARE_TURN_KEY_ID ? "Public STUN + Cloudflare TURN Relay" : "Public STUN (set --turn-key-id & --turn-api-token for TURN relay)"}`,
+  );
   logger.info("Login OTP Mode:    Displayed directly on screen (unless SMTP is configured)");
   logger.info("Upstream Sync:     Run `bun scripts/selfhost.ts sync` or pass `--sync`");
   logger.info("============================================================");

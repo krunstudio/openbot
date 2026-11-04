@@ -490,6 +490,12 @@ async function allocateDevelopmentPorts(
         logger.info(`Signal health port ${DEFAULT_REMOTE_HEALTH_PORT} is busy. Using ${healthPort}.`);
       }
     }
+    sharedEnvironment.OPENBOT_PUBLIC_HOST ??= developmentEnvironment.OPENBOT_PUBLIC_HOST;
+    sharedEnvironment.TURN_HOST ??= developmentEnvironment.TURN_HOST;
+    sharedEnvironment.REMOTE_ICE_SERVERS ??= developmentEnvironment.REMOTE_ICE_SERVERS;
+    sharedEnvironment.REMOTE_DISABLE_LOCAL_TURN ??= developmentEnvironment.REMOTE_DISABLE_LOCAL_TURN;
+    sharedEnvironment.CLOUDFLARE_TURN_KEY_ID ??= developmentEnvironment.CLOUDFLARE_TURN_KEY_ID;
+    sharedEnvironment.CLOUDFLARE_TURN_API_TOKEN ??= developmentEnvironment.CLOUDFLARE_TURN_API_TOKEN;
     configureMobileConnectDevelopmentNetwork(services, sharedEnvironment, networkInterfaces());
     const webOrigin = sharedEnvironment.OPENBOT_MOBILE_AUTH_API_URL ?? `http://127.0.0.1:${apiPort}`;
     logger.info(`Self-Hosted WebUI (/app): ${webOrigin}/app (local: http://127.0.0.1:${apiPort}/app)`);
@@ -687,7 +693,16 @@ export function configureMobileConnectDevelopmentNetwork(
         ? `wss://${address}/v1/signal`
         : `ws://${address ?? "127.0.0.1"}:${signalPort}/v1/signal`;
     environment.REMOTE_SIGNAL_HOMES ??= "";
+    const hasExplicitTurnHost = Boolean(environment.TURN_HOST?.trim());
     environment.TURN_HOST ??= address ?? "127.0.0.1";
+    if (!hasExplicitTurnHost) {
+      environment.REMOTE_DISABLE_LOCAL_TURN ??= "true";
+      environment.REMOTE_ICE_SERVERS ??= JSON.stringify([
+        {
+          urls: ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
+        },
+      ]);
+    }
   }
 
   if (!address) return;
